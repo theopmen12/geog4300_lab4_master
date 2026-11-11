@@ -47,7 +47,20 @@ Load the dataset using read_csv, and also take a look at the two variables of in
 **Task 1** _Load the Pulse data and filter it to only valid responses._
 
 ```{r Task1}
+# Load the original dataset
+pulse <- read_csv("data/pulse_2023.csv")
 
+# Keep only valid responses
+pulse_valid <- pulse %>%
+  filter(THHLD_NUMKID >= 0,
+         THHLD_NUMKID <= 40,
+         ND_DISPLACE %in% c(1, 2))
+
+# View the first six rows
+head(pulse_valid)
+
+# Count the number of valid observations
+nrow(pulse_valid)
 ```
 
 You'll be conducting a two-sample test of difference to look at whether the number of children differs between those displaced and not displaced. To know which test to use, you have to assess the normality of the THHLD_NUMKID variable. 
@@ -55,7 +68,12 @@ You'll be conducting a two-sample test of difference to look at whether the numb
 **Task 2** _Assess the normality of this variable using either a histogram OR a qq line. Make sure your plot is visible and interpret what it shows you about the normality of this variable._
 
 ```{r Task2}
-
+ggplot(pulse_valid, aes(x = THHLD_NUMKID)) +
+  geom_histogram(binwidth = 1, boundary = -0.5, color = "black") +
+  labs(title = "Number of children per household",
+       x = "Number of children under 18",
+       y = "Number of households") +
+  theme_minimal()
 ```
 
 ### Testing the difference in number of children.
@@ -64,17 +82,33 @@ Now you can test whether the number of children differs between displaced and no
 
 **Task 3** _Based on the normality of the data, what is the appropriate statistical test for determining whether the number of children differs between these two groups? Explain why this test is appropriate and give a null and alternative hypothesis for this test_
 
-{Your answer here}
+{The appropriate statistical test is the Wilcoxon rank-sum test. This is because we are comparing two independent groups, households displaced by natural disasters and households not displaced, and the number of children is not normally distributed. The Wilcoxon test is a non-parametric alternative to the independent two-sample t-test. The null hypothesis is that there is no difference in the distribution of the number of children between displaced and non-displaced households. The alternative hypothesis is that a difference exists.}
 
 **Task 4** _Run the test you identified in Task 3. Also calculate the mean for each dataset, which you can use to determine the nature of the difference--which group (if any) has more children._
 
 ```{r Task4}
+# Wilcoxon rank-sum test for two independent samples
+wilcox_result <- wilcox.test(THHLD_NUMKID ~ ND_DISPLACE,
+                            data = pulse_valid,
+                            exact = FALSE)
+wilcox_result
 
+# Calculate the number of households, mean, and median for each group
+children_summary <- pulse_valid %>%
+  group_by(ND_DISPLACE) %>%
+  summarise(n = n(),
+            mean_children = mean(THHLD_NUMKID),
+            median_children = median(THHLD_NUMKID),
+            .groups = "drop")
+
+children_summary
 ```
 
 **Task 5** _Interpret the results of the analysis you did in task 4._ 
   * Do you reject the null hypothesis? Why or why not? 
   * Based on the test result and the group means, what can we conclude about differences in the number of children between these two groups?
+
+**Answer:** The Wilcoxon rank-sum test gave a p-value of approximately 2.46 × 10⁻¹², which is less than 0.05, so I reject the null hypothesis. The distribution of the number of childre differs significantly between displaced and non-displaced households. The mean was 0.747 children for displaced households and 0.594 for non-displaced households. Displaced households reported about 0.153 more children per household on average. The result is statistically significant, but the gap in means is small. The Wilcoxon test compares distributions or ranks rather than testing the means directly.
 
 ### Identifying differences in time displaced by natural disasters across income groups
 
@@ -85,30 +119,58 @@ Again, look at the data dictionary to better understand how these two variables 
 **Task 6** _Reload the original, unfiltered Pulse dataset (not the one you used in parts 1 and 2). Select only observations for households displaced by a natural disaster using the ND_DISPLACE variable. Then filter for records with valid responses to INCOME and ND_HOWLONG. Call the head of the table with `kable` when done._
 
 ```{r Task6}
+# Reload the original dataset
+pulse_original<-read_csv("data/pulse_2023.csv")
 
+# Select valid displaced households
+pulse_displaced<-pulse_original %>%
+  filter(ND_DISPLACE==1,
+         INCOME %in% 1:8,
+         ND_HOWLONG %in% 1:5) %>%
+  select(INCOME,ND_DISPLACE,ND_HOWLONG)
+
+knitr::kable(head(pulse_displaced))
+nrow(pulse_displaced)
 ```
 
 **Task 7** _Create a contingency table of responses to the ND_HOWLONG variable by INCOME. The rows of this table should be the income groups and the columns should be the categorical variables showing time displaced. Call the table when you are done._
 
 ```{r Task7}
+# Rows = income groups; columns = displacement time categories
+contingency<-pulse_displaced %>%
+  count(INCOME,ND_HOWLONG,name="count") %>%
+  pivot_wider(names_from=ND_HOWLONG,
+              values_from=count,
+              values_fill=0)
 
+contingency
 ```
 
 **Task 8** _Run a chi-square test on your contingency table to assess whether there are statistically significant differences in displacement time between these income groups. You'll likely need to delete the INCOME variable to do so._ 
 
 ```{r Task8}
-
+chisq.test(contingency %>% select(-INCOME))
 ```
 
 **Task 9** _To help with your interpretation of results, Calculate the percentage of households within each income group that fall into category 1 of ND_HOWLONG ("displaced less than a week")._
 
 ```{r Task9}
+# Find the percentage in category 1 (less than one week) within each income group
+income_percent <- pulse_displaced %>%
+  group_by(INCOME) %>%
+  summarise(total = n(),
+            less_than_one_week = sum(ND_HOWLONG == 1),
+            percent_less_than_week = 100 * less_than_one_week / total,
+            .groups = "drop")
 
+knitr::kable(income_percent, digits = 2)
 ```
 
 **Task 10** _Interpret the results of your analysis in tasks 8 and 9._ 
   * Do you reject the null hypothesis based on these results and why (or why not)? 
   * What do your results in Task 9 tell you about differences in how quickly households were able to return?
+  
+**Answer:** We reject the null hypothesis that household income and displacement duration are independent. The chi-square test produced χ2 = 210.51, df = 28, and p < 2.2 × 10⁻¹⁶. Since the p-value is below 0.05, the association between household income and displacement duration is statistically significant. In the Task 9 results, the percentage of households displaced for less than one week generally rises with income. It was 32.99% for households earning less than $25,000 (INCOME = 1) and 59.92% for those earning $150,000–$199,999 (INCOME = 7), then fell slightly to 54.39% for those earning $200,000 or more (INCOME = 8). This suggests that higher-income households tended to report shorter displacement durations, though the trend is not consistent across income groups. The chi-square test shows an association, not that income directly caused households to return sooner.
 
 ### Challenge Question:
 Calculate and map the percentage of households reporting displacement (ND_DISPLACE) by state. To do so, you'll need to start with a version of the dataset that excludes non-valid responses and then calculate the percentage displaced by state.
@@ -123,8 +185,8 @@ Once you've calculated that estimate, map it out using the `states_albers` geopa
 
 **Disclosure of assistance:** Besides class materials, what other sources of assistance did you use while completing this lab? These can include input from classmates, relevant material identified through web searches (e.g., Stack Overflow), or assistance from ChatGPT or other AI tools. How did these sources support your own learning in completing this lab?
 
-{Response here.}
+{I used the class lecture slides and video on normality, two-sample tests, and chi-square tests, as well as the Household Pulse Survey data dictionary.}
 
 **Lab reflection:** How do you feel about the work you did on this lab? Was it easy, moderate, or hard? What are the biggest things you learned by completing it?
 
-{Your response here}
+{I found this lab moderately challenging, especially when deciding which statistical test was appropriate and understanding how to interpret the p-values. One important thing I learned was how to assess normality using a histogram before choosing a statistical test. I also learned how to use the Wilcoxon rank-sum test to compare two independent groups and how to create a contingency table and use a chi-square test to examine relationships between categorical variables.}
